@@ -1,3 +1,7 @@
 pandas
 streamlit
 ydata_profiling
+numpy
+seaborn
+plotly
+matplotlib
