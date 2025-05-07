@@ -1,4 +1,5 @@
 .DS_store
+/nootbooks/*.log
 /.history
 
 .env

@@ -5,3 +5,6 @@ numpy
 seaborn
 plotly
 matplotlib
+pycaret
+pandera
+sklearn
