@@ -7,7 +7,7 @@ from dotenv import dotenv_values
 from pydantic import BaseModel, ValidationError
 from pycaret.regression import load_model, predict_model
 
-st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='centered')
+st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='wide')
 st.title('halfmarathon-finish-time-predictor')
 
 tab1, tab2 = st.tabs(['Manual Predictor','Smart Predictor'])
@@ -49,7 +49,7 @@ Strictly return only JSON without any explanation.
 """
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
         )
@@ -63,14 +63,18 @@ Strictly return only JSON without any explanation.
         return None
 
 def time_to_seconds(t):
-    parts = list(map(int, t.strip().split(":")))
-    if len(parts) == 2:
-        minutes, seconds = parts
-        hours = 0
-    else:
+    try:
+        parts = list(map(int, t.strip().split(":")))
+        if len(parts) == 2:
+            minutes, seconds = parts
+            if seconds >= 60:
+                return None
+            hours = 0
+        else:
+            return None
+        return hours * 3600 + minutes * 60 + seconds
+    except ValueError:
         return None
-    return hours * 3600 + minutes * 60 + seconds
-
 
 #
 # MAIN
@@ -79,16 +83,16 @@ def time_to_seconds(t):
 with tab1:
     st.header(":bar_chart: Enter Your Running Data")
 
-    time_5k_str = st.text_input("Time for 5 kilometer run (mm:ss)", "27:43")
+    time_5k_str = st.text_input("Time for 5 kilometer run (MM:SS)", "27:43")
     age = st.number_input("Age", min_value=6, max_value=120, value=40)
     gender_str = st.selectbox("Gender", ["Female", "Male"])
 
     time_5k = time_to_seconds(time_5k_str)
-    pace_5k = time_5k / 5
     gender = 0 if gender_str == "Female" else 1
 
     if st.button("Predict Half Marathon Time"):
         if time_5k is not None:
+            pace_5k = time_5k / 5
             input_data = pd.DataFrame([{
                 "time_5k_sec": time_5k,
                 "pace_5k_sec": pace_5k,
@@ -105,7 +109,7 @@ with tab1:
 
             st.success(f":checkered_flag: Estimated Half Marathon Time: {hours}h {minutes}m {seconds}s")
         else:
-            st.error(":warning: Invalid time format. Use mm:ss")
+            st.error(":warning: Invalid time format. Use MM:SS")
 
 with tab2:
     st.header(":robot_face: AI – Let the model understand you")
