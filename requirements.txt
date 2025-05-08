@@ -11,3 +11,4 @@ scikit-learn
 openai
 python-dotenv
 pydantic
+instructor

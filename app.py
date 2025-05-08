@@ -1,10 +1,12 @@
 import json
 
+import instructor
 import pandas as pd
 import streamlit as st
 from openai import OpenAI
 from dotenv import dotenv_values
-from pydantic import BaseModel, ValidationError
+from typing import Optional
+from pydantic import BaseModel, ValidationError, Field
 from pycaret.regression import load_model, predict_model
 
 st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='wide')
@@ -20,46 +22,33 @@ model = load_model("./models/halfmarathon_predictor")
 
 env = dotenv_values('.env')
 
-def get_openai_client():
-    return OpenAI(api_key=st.session_state['openai_api_key'])
-
 class InputData(BaseModel):
-    time_5k_sec: float
-    pace_5k_sec: float
-    gender: int  # 0=female, 1=male
-    age: float
+    time_5k_sec: Optional[float] = Field(..., description="Time to run 5km in seconds")
+    pace_5k_sec: Optional[float] = Field(..., description="Pace per kilometer in seconds")
+    gender: Optional[int] = Field(..., description="Gender as integer: 0=female, 1=male")
+    age: Optional[float] = Field(..., description="Age in years")
+
+def get_openai_client():
+    client = OpenAI(api_key=st.session_state['openai_api_key'])
+    return instructor.patch(client)
 
 def extract_input_from_text(user_text: str) -> InputData | None:
-    prompt = f"""
-Extract structured JSON for the following running information:
-
-"{user_text}"
-
-Return a JSON with keys: "time_5k_sec", "pace_5k_sec", "gender" (0 for female, 1 for male), and "age".
-
-Example output:
-{{
-  "time_5k_sec": 1500,
-  "pace_5k_sec": 300,
-  "gender": 1,
-  "age": 28
-}}
-
-Strictly return only JSON without any explanation.
-"""
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-        raw = response.choices[0].message.content
+        openai_client = get_openai_client()
 
-        parsed = json.loads(raw)
-        return InputData(**parsed)
-    except (ValidationError, json.JSONDecodeError) as e:
-        st.error(":warning: OpenAI returned invalid data. Try rephrasing your input.")
-        # st.exception(e)
+        parsed_data = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "user", "content": f"Extract running information from: '{user_text}'"}
+            ],
+            response_model=InputData,
+            max_retries=2,
+        )
+
+        return parsed_data
+    except Exception as e:
+        st.error(f":warning: Error extracting data. Try rephrasing your input.")
+        st.exception(e)
         return None
 
 def time_to_seconds(t):
@@ -138,6 +127,14 @@ with tab2:
             with st.spinner("Thinking..."):
                 result = extract_input_from_text(user_input)
                 if result:
+
+                    # Abort prediction if the LLM output contains empty or missing fields
+                    result_dict = result.model_dump()
+                    invalid_keys = [k for k, v in result_dict.items() if not v]
+                    if invalid_keys:
+                        st.error(f":warning: Empty or invalid fields: {', '.join(invalid_keys)}")
+                        raise ValueError(f"Validation failed for: {invalid_keys}")
+
                     st.success(":white_check_mark: Data extracted successfully:")
                     st.json(result.model_dump())
 
