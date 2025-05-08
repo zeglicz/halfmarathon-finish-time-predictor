@@ -7,4 +7,7 @@ plotly
 matplotlib
 pycaret
 pandera
-sklearn
+scikit-learn
+openai
+python-dotenv
+pydantic

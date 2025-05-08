@@ -3,5 +3,4 @@
 
 .env
 
-/nootbooks/*.log
-*.log
+**/*.log

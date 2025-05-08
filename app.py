@@ -1,38 +1,86 @@
-import streamlit as st
+import json
+
 import pandas as pd
+import streamlit as st
+from openai import OpenAI
+from dotenv import dotenv_values
+from pydantic import BaseModel, ValidationError
 from pycaret.regression import load_model, predict_model
 
-model = load_model("./models/halfmarathon_predictor")
+st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='centered')
+st.title('halfmarathon-finish-time-predictor')
+
+tab1, tab2 = st.tabs(['Manual Predictor','Smart Predictor'])
 
 #
 # PREDICTOR
 #
 
-# Convert inputs
+model = load_model("./models/halfmarathon_predictor")
+
+env = dotenv_values('.env')
+
+def get_openai_client():
+    return OpenAI(api_key=st.session_state['openai_api_key'])
+
+class InputData(BaseModel):
+    time_5k_sec: float
+    pace_5k_sec: float
+    gender: int  # 0=female, 1=male
+    age: float
+
+def extract_input_from_text(user_text: str) -> InputData | None:
+    prompt = f"""
+Extract structured JSON for the following running information:
+
+"{user_text}"
+
+Return a JSON with keys: "time_5k_sec", "pace_5k_sec", "gender" (0 for female, 1 for male), and "age".
+
+Example output:
+{{
+  "time_5k_sec": 1500,
+  "pace_5k_sec": 300,
+  "gender": 1,
+  "age": 28
+}}
+
+Strictly return only JSON without any explanation.
+"""
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+        )
+        raw = response.choices[0].message.content
+
+        parsed = json.loads(raw)
+        return InputData(**parsed)
+    except (ValidationError, json.JSONDecodeError) as e:
+        st.error(":warning: OpenAI returned invalid data. Try rephrasing your input.")
+        # st.exception(e)
+        return None
+
 def time_to_seconds(t):
     parts = list(map(int, t.strip().split(":")))
     if len(parts) == 2:
         minutes, seconds = parts
         hours = 0
-    elif len(parts) == 3:
-        hours, minutes, seconds = parts
     else:
         return None
     return hours * 3600 + minutes * 60 + seconds
+
 
 #
 # MAIN
 #
 
-st.title('halfmarathon-finish-time-predictor')
-
-tab1, tab2 = st.tabs(['Manual Predictor','Smart Predictor'])
-
 with tab1:
-    st.header("Enter Your Running Data")
+    st.header(":bar_chart: Enter Your Running Data")
 
-    time_5k_str = st.text_input("Time for 5 km (mm:ss)", "27:43")
-    age = st.number_input("Age", min_value=10, max_value=100, value=40)
+    time_5k_str = st.text_input("Time for 5 kilometer run (mm:ss)", "27:43")
+    age = st.number_input("Age", min_value=6, max_value=120, value=40)
     gender_str = st.selectbox("Gender", ["Female", "Male"])
 
     time_5k = time_to_seconds(time_5k_str)
@@ -55,9 +103,46 @@ with tab1:
             minutes = int((predicted_seconds % 3600) // 60)
             seconds = int(predicted_seconds % 60)
 
-            st.success(f"Estimated Half Marathon Time: {hours}h {minutes}m {seconds}s")
+            st.success(f":checkered_flag: Estimated Half Marathon Time: {hours}h {minutes}m {seconds}s")
         else:
-            st.error("Invalid time format. Use mm:ss")
+            st.error(":warning: Invalid time format. Use mm:ss")
 
 with tab2:
-    st.header("AI")
+    st.header(":robot_face: AI – Let the model understand you")
+
+    if not st.session_state.get('openai_api_key'):
+        if 'OPENAI_API_KEY' in env:
+                st.session_state['openai_api_key'] = env['OPENAI_API_KEY']
+        else:
+            st.info('Add your OpenAI API key to use the application')
+            st.session_state['openai_api_key'] = st.text_input('API key')
+
+    if not st.session_state.get('openai_api_key'):
+            st.stop()
+            st.error('Invalid OpenAI API key')
+
+    openai_client = OpenAI(api_key=st.session_state['openai_api_key'])
+
+    st.markdown(
+        "Describe your **age**, **gender**, and **5 kilometer run time** (e.g., *I'm 40 years old, male, and run 5 kilometers in 27:43 minutes*)."
+    )
+
+    user_input = st.text_area("Enter your description:")
+
+    if st.button("Submit to AI"):
+        if user_input.strip():
+            with st.spinner("Thinking..."):
+                result = extract_input_from_text(user_input)
+                if result:
+                    st.success(":white_check_mark: Data extracted successfully:")
+                    st.json(result.model_dump())
+
+                    input_df = pd.DataFrame([result.model_dump()])
+                    prediction = predict_model(model, data=input_df)
+                    predicted = prediction["prediction_label"].iloc[0]
+
+                    h = int(predicted // 3600)
+                    m = int((predicted % 3600) // 60)
+                    s = int(predicted % 60)
+
+                    st.success(f":checkered_flag: Estimated Half Marathon Time: {h}h {m}m {s}s")
