@@ -1,6 +1,14 @@
-.DS_store
-/.history
-
+# local
 .env
+.vscode/
+.idea/
+.history/
 
+# cache
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.DS_Store
+
+# logs
 **/*.log

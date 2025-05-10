@@ -12,3 +12,4 @@ openai
 python-dotenv
 pydantic
 instructor
+boto3
