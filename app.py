@@ -1,15 +1,16 @@
-import json
-
-import instructor
 import pandas as pd
 import streamlit as st
-from openai import OpenAI
-from dotenv import dotenv_values
 from typing import Optional
-from pydantic import BaseModel, ValidationError, Field
+from pydantic import BaseModel, Field
 from pycaret.regression import load_model, predict_model
 
-st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='wide')
+import instructor
+from dotenv import dotenv_values
+from langfuse import Langfuse
+from langfuse.decorators import observe
+from langfuse.openai import OpenAI
+
+st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='centered')
 st.title('halfmarathon-finish-time-predictor')
 
 tab1, tab2 = st.tabs(['Manual Predictor','Smart Predictor'])
@@ -22,6 +23,12 @@ model = load_model("./models/halfmarathon_predictor")
 
 env = dotenv_values('.env')
 
+langfuse = Langfuse(
+    public_key=env.get("LANGFUSE_PUBLIC_KEY"),
+    secret_key=env.get("LANGFUSE_SECRET_KEY"),
+    host=env.get("LANGFUSE_HOST")
+)
+
 class InputData(BaseModel):
     time_5k_sec: Optional[float] = Field(..., description="Time to run 5km in seconds")
     pace_5k_sec: Optional[float] = Field(..., description="Pace per kilometer in seconds")
@@ -32,10 +39,12 @@ def get_openai_client():
     client = OpenAI(api_key=st.session_state['openai_api_key'])
     return instructor.patch(client)
 
+@observe()
 def extract_input_from_text(user_text: str) -> InputData | None:
     try:
         openai_client = get_openai_client()
 
+        # langfuse.trace(name="test-trace", input={"user_text": user_text})
         parsed_data = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[

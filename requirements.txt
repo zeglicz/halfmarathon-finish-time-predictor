@@ -13,3 +13,4 @@ python-dotenv
 pydantic
 instructor
 boto3
+langfuse
