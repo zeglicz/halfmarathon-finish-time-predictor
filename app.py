@@ -10,10 +10,10 @@ from langfuse import Langfuse
 from langfuse.decorators import observe
 from langfuse.openai import OpenAI
 
-st.set_page_config(page_title='halfmarathon-finish-time-predictor', layout='centered')
-st.title('halfmarathon-finish-time-predictor')
+st.set_page_config(page_title="halfmarathon-finish-time-predictor", layout="centered")
+st.title("halfmarathon-finish-time-predictor")
 
-tab1, tab2 = st.tabs(['Manual Predictor','Smart Predictor'])
+tab1, tab2 = st.tabs(["Manual Predictor", "Smart Predictor"])
 
 #
 # PREDICTOR
@@ -21,23 +21,30 @@ tab1, tab2 = st.tabs(['Manual Predictor','Smart Predictor'])
 
 model = load_model("./models/halfmarathon_predictor")
 
-env = dotenv_values('.env')
+env = dotenv_values(".env")
 
 langfuse = Langfuse(
     public_key=env.get("LANGFUSE_PUBLIC_KEY"),
     secret_key=env.get("LANGFUSE_SECRET_KEY"),
-    host=env.get("LANGFUSE_HOST")
+    host=env.get("LANGFUSE_HOST"),
 )
+
 
 class InputData(BaseModel):
     time_5k_sec: Optional[float] = Field(..., description="Time to run 5km in seconds")
-    pace_5k_sec: Optional[float] = Field(..., description="Pace per kilometer in seconds")
-    gender: Optional[int] = Field(..., description="Gender as integer: 0=female, 1=male")
+    pace_5k_sec: Optional[float] = Field(
+        ..., description="Pace per kilometer in seconds"
+    )
+    gender: Optional[int] = Field(
+        ..., description="Gender as integer: 0=female, 1=male"
+    )
     age: Optional[float] = Field(..., description="Age in years")
 
+
 def get_openai_client():
-    client = OpenAI(api_key=st.session_state['openai_api_key'])
+    client = OpenAI(api_key=st.session_state["openai_api_key"])
     return instructor.patch(client)
+
 
 @observe()
 def extract_input_from_text(user_text: str) -> InputData | None:
@@ -48,7 +55,10 @@ def extract_input_from_text(user_text: str) -> InputData | None:
         parsed_data = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "user", "content": f"Extract running information from: '{user_text}'"}
+                {
+                    "role": "user",
+                    "content": f"Extract running information from: '{user_text}'",
+                }
             ],
             response_model=InputData,
             max_retries=2,
@@ -59,6 +69,7 @@ def extract_input_from_text(user_text: str) -> InputData | None:
         st.error(f":warning: Error extracting data. Try rephrasing your input.")
         st.exception(e)
         return None
+
 
 def time_to_seconds(t):
     try:
@@ -73,6 +84,7 @@ def time_to_seconds(t):
         return hours * 3600 + minutes * 60 + seconds
     except ValueError:
         return None
+
 
 #
 # MAIN
@@ -91,12 +103,16 @@ with tab1:
     if st.button("Predict Half Marathon Time"):
         if time_5k is not None:
             pace_5k = time_5k / 5
-            input_data = pd.DataFrame([{
-                "time_5k_sec": time_5k,
-                "pace_5k_sec": pace_5k,
-                "gender": gender,
-                "age": float(age)
-            }])
+            input_data = pd.DataFrame(
+                [
+                    {
+                        "time_5k_sec": time_5k,
+                        "pace_5k_sec": pace_5k,
+                        "gender": gender,
+                        "age": float(age),
+                    }
+                ]
+            )
 
             prediction = predict_model(model, data=input_data)
             predicted_seconds = prediction["prediction_label"].iloc[0]
@@ -105,25 +121,27 @@ with tab1:
             minutes = int((predicted_seconds % 3600) // 60)
             seconds = int(predicted_seconds % 60)
 
-            st.success(f":checkered_flag: Estimated Half Marathon Time: {hours}h {minutes}m {seconds}s")
+            st.success(
+                f":checkered_flag: Estimated Half Marathon Time: {hours}h {minutes}m {seconds}s"
+            )
         else:
             st.error(":warning: Invalid time format. Use MM:SS")
 
 with tab2:
     st.header(":robot_face: AI – Let the model understand you")
 
-    if not st.session_state.get('openai_api_key'):
-        if 'OPENAI_API_KEY' in env:
-                st.session_state['openai_api_key'] = env['OPENAI_API_KEY']
+    if not st.session_state.get("openai_api_key"):
+        if "OPENAI_API_KEY" in env:
+            st.session_state["openai_api_key"] = env["OPENAI_API_KEY"]
         else:
-            st.info('Add your OpenAI API key to use the application')
-            st.session_state['openai_api_key'] = st.text_input('API key')
+            st.info("Add your OpenAI API key to use the application")
+            st.session_state["openai_api_key"] = st.text_input("API key")
 
-    if not st.session_state.get('openai_api_key'):
-            st.stop()
-            st.error('Invalid OpenAI API key')
+    if not st.session_state.get("openai_api_key"):
+        st.stop()
+        st.error("Invalid OpenAI API key")
 
-    openai_client = OpenAI(api_key=st.session_state['openai_api_key'])
+    openai_client = OpenAI(api_key=st.session_state["openai_api_key"])
 
     st.markdown(
         "Describe your **age**, **gender**, and **5 kilometer run time** (e.g., *I'm 40 years old, male, and run 5 kilometers in 27:43 minutes*)."
@@ -141,7 +159,9 @@ with tab2:
                     result_dict = result.model_dump()
                     invalid_keys = [k for k, v in result_dict.items() if not v]
                     if invalid_keys:
-                        st.error(f":warning: Empty or invalid fields: {', '.join(invalid_keys)}")
+                        st.error(
+                            f":warning: Empty or invalid fields: {', '.join(invalid_keys)}"
+                        )
                         raise ValueError(f"Validation failed for: {invalid_keys}")
 
                     st.success(":white_check_mark: Data extracted successfully:")
@@ -155,4 +175,6 @@ with tab2:
                     m = int((predicted % 3600) // 60)
                     s = int(predicted % 60)
 
-                    st.success(f":checkered_flag: Estimated Half Marathon Time: {h}h {m}m {s}s")
+                    st.success(
+                        f":checkered_flag: Estimated Half Marathon Time: {h}h {m}m {s}s"
+                    )
